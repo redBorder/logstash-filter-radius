@@ -12,19 +12,29 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
 
   # Constants
   # Common
+  MARKET = "market"
+  MARKET_UUID = "market_uuid"
+  ORGANIZATION = "organization"
+  ORGANIZATION_UUID = "organization_uuid"
+  DEPLOYMENT = "deployment"
+  DEPLOYMENT_UUID = "deployment_uuid";
+  SENSOR_NAME = "sensor_name"
+  SENSOR_UUID = "sensor_uuid"
+  SERVICE_PROVIDER = "service_provider"
+  SERVICE_PROVIDER_UUID = "service_provider_uuid"
   NAMESPACE = "namespace"
   NAMESPACE_UUID = "namespace_uuid"
   WIRELESS_OPERATOR="wireless_operator"
 
   # Radius Specification
-  PACKET_SRC_IP_ADDRESS = "Packet-Src-IP-Address";
-  USER_NAME_RADIUS = "User-Name";
-  OPERATOR_NAME = "Operator-Name";
-  AIRESPACE_WLAN_ID = "Airespace-Wlan_Id";
-  CALLING_STATION_ID = "Calling-Station-Id";
-  ACCT_STATUS_TYPE = "Acct-Status-Type";
-  CALLED_STATION_ID = "Called-Station-Id";
-  CLIENT_ACCOUNTING_TYPE = "client_accounting_type";
+  PACKET_SRC_IP_ADDRESS = "Packet-Src-IP-Address"
+  USER_NAME_RADIUS = "User-Name"
+  OPERATOR_NAME = "Operator-Name"
+  AIRESPACE_WLAN_ID = "Airespace-Wlan_Id"
+  CALLING_STATION_ID = "Calling-Station-Id"
+  ACCT_STATUS_TYPE = "Acct-Status-Type"
+  CALLED_STATION_ID = "Called-Station-Id"
+  CLIENT_ACCOUNTING_TYPE = "client_accounting_type"
 
   #Custom
   RADIUS_STORE = "radius"
