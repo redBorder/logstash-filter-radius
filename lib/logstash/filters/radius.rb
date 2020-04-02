@@ -24,6 +24,7 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
   SERVICE_PROVIDER_UUID = "service_provider_uuid"
   NAMESPACE = "namespace"
   NAMESPACE_UUID = "namespace_uuid"
+  TIMESTAMP = "timestamp"
   WIRELESS_OPERATOR="wireless_operator"
 
   # Radius Specification
@@ -49,7 +50,8 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
     @store = @memcached.get(RADIUS_STORE)
     @store = Hash.new if @store.nil?
   end
-
+  
+  public
   def register
     @store = {}
     @dimToDruid = [MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID, DEPLOYMENT, DEPLOYMENT_UUID, 
@@ -59,6 +61,7 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
     set_stores
   end
 
+  public
   def filter(event)
     toDruid = {}
     toCache = {}
@@ -106,21 +109,22 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
       if clientConnection then
         toDruid[CLIENT_ACCOUNTING_TYPE] = clientConnection.downcase
         if clientConnection.eql? "Stop" then
-          # funcion de log
-          # log.debug("REMOVE  client: {} - namespace: {} - contents: " + toCache, clientMac, namespace_id);
-          #@logger.debug("REMOVE  client: {} - namespace: {} - contents: " + toCache, clientMac, namespace_id);
+          # funcion de lo
+          # @logger.debug("PUT  client: {} - namesapce: {} - contents: " + toCache, clientMac, namespace_id);
+  
         else
           @store[clientMac + namespace_id] = toCache
           @memcached.set(RADIUS_STORE, @store)
           # funcion de log
-          # log.debug("PUT  client: {} - namespace: {} - contents: " + toCache, clientMac, namespace_id);
+          #
         end 
       else
         @store[clientMac + namespace_id] = toCache
         @memcached.set(RADIUS_STORE, @store)
         # funcion de log
-        # log.debug("PUT  client: {} - namespace: {} - contents: " + toCache, clientMac, namespace_id);
+
       end
+      
       toDruid[TYPE] = "radius"
       toDruid[CLIENT_PROFILE] = "hard"
       toDruid.merge!(toCache)
