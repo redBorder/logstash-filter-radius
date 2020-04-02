@@ -1,8 +1,8 @@
 Gem::Specification.new do |s|
   s.name = 'logstash-filter-radius'
-  s.version = '1.0.0'
+  s.version = '1.0.2'
   s.licenses = ['Apache License (2.0)']
-  s.summary = "XXX"
+  s.summary = "This gem obtains the data from a Free Radius Server and transforms it for further processing."
   s.description = "This gem is a Logstash plugin required to be installed on top of the Logstash core pipeline using $LS_HOME/bin/logstash-plugin install gemname. This gem is not a stand-alone program"
   s.authors = ["Elastic"]
   s.email = 'systems@redborder.com'
@@ -19,6 +19,6 @@ Gem::Specification.new do |s|
 
   # Gem dependencies
   s.add_runtime_dependency "logstash-core-plugin-api", "~> 2.0"
+  s.add_runtime_dependency "dalli"
   s.add_development_dependency 'logstash-devutils'
-  s.add_development_dependency 'dalli'
 end
