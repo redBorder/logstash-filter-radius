@@ -1,7 +1,8 @@
 PATH
   remote: .
   specs:
-    logstash-filter-radius (1.0.0)
+    logstash-filter-radius (1.0.2)
+      dalli
       logstash-core-plugin-api (~> 2.0)
 
 GEM
@@ -22,7 +23,7 @@ GEM
     elasticsearch-transport (5.0.5)
       faraday
       multi_json
-    faraday (1.0.0)
+    faraday (1.0.1)
       multipart-post (>= 1.2, < 3)
     ffi (1.12.2-java)
     filesize (0.0.4)
@@ -95,7 +96,7 @@ GEM
       rspec-mocks (~> 3.9.0)
     rspec-core (3.9.1)
       rspec-support (~> 3.9.1)
-    rspec-expectations (3.9.0)
+    rspec-expectations (3.9.1)
       diff-lcs (>= 1.2.0, < 2.0)
       rspec-support (~> 3.9.0)
     rspec-mocks (3.9.1)
