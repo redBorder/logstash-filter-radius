@@ -108,7 +108,6 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
       counterStore = @memcached.get(COUNTER_STORE)
       counterStore = Hash.new if counterStore.nil?
       counterStore[datasource] = counterStore[datasource].nil? ? 0 : (counterStore[datasource] + 1)
-      puts ("escribiendo en COUNTER_STORE #{COUNTER_STORE} y esta escribiendo en #{datasource} el valor #{counterStore[datasource]}")
       @memcached.set(COUNTER_STORE,counterStore)
 
 
