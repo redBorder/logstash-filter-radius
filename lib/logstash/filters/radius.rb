@@ -5,60 +5,32 @@ require "logstash/namespace"
 require "json"
 require "time"
 require "dalli"
+require "yaml"
+
+require_relative "util/location_constant"
+require_relative "util/memcached_config"
+require_relative "store/store_manager"
+
+
 
 class LogStash::Filters::Radius < LogStash::Filters::Base
+  include LocationConstant
 
   config_name "radius"
 
-  # Constants
-  # Common
-  MARKET = "market"
-  MARKET_UUID = "market_uuid"
-  ORGANIZATION = "organization"
-  ORGANIZATION_UUID = "organization_uuid"
-  DEPLOYMENT = "deployment"
-  DEPLOYMENT_UUID = "deployment_uuid";
-  SENSOR_NAME = "sensor_name"
-  SENSOR_UUID = "sensor_uuid"
-  SERVICE_PROVIDER = "service_provider"
-  SERVICE_PROVIDER_UUID = "service_provider_uuid"
-  NAMESPACE = "namespace"
-  NAMESPACE_UUID = "namespace_uuid"
-  TIMESTAMP = "timestamp"
-  WIRELESS_OPERATOR="wireless_operator"
+  config :memcached_server, :validate => :string, :default => "", :required => false
 
-  # Radius Specification
-  PACKET_SRC_IP_ADDRESS = "Packet-Src-IP-Address"
-  USER_NAME_RADIUS = "User-Name"
-  OPERATOR_NAME = "Operator-Name"
-  AIRESPACE_WLAN_ID = "Airespace-Wlan_Id"
-  CALLING_STATION_ID = "Calling-Station-Id"
-  ACCT_STATUS_TYPE = "Acct-Status-Type"
-  CALLED_STATION_ID = "Called-Station-Id"
-  CLIENT_ACCOUNTING_TYPE = "client_accounting_type"
-
-  #Custom
-  RADIUS_STORE = "radius"
-  DATASOURCE = "rb_location"
-  COUNTER_STORE = "counterStore"
-  FLOWS_NUMBER = "flowsNumber"
-  
-  # end of Constants
-
-  public
-  def set_stores
-    @store = @memcached.get(RADIUS_STORE)
-    @store = Hash.new if @store.nil?
-  end
+  #Custom constants
+  DATASOURCE =  "rb_location"
   
   public
   def register
-    @store = {}
-    @dimToDruid = [MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID, DEPLOYMENT, DEPLOYMENT_UUID, 
+    @dim_to_druid = [MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID, DEPLOYMENT, DEPLOYMENT_UUID, 
                    SENSOR_NAME, SENSOR_UUID, NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID, NAMESPACE_UUID]
-    options = {:expires_in => 0}
-    @memcached = Dalli::Client.new("localhost:11211", options)
-    set_stores
+    @memcached_server = MemcachedConfig::servers.first if @memcached_server.empty?
+    @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0})
+    @store = @memcached.get(RADIUS_STORE) || {}
+    @store_manager = StoreManager.new(@memcached)   
   end
 
   public
@@ -81,14 +53,16 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
     namespace_id = event.get(NAMESPACE_UUID) ? event.get(NAMESPACE_UUID) : ""
 
     timestamp = event.get(TIMESTAMP)
-    if !clientMac.nil? then
-      toDruid[CLIENT_MAC, clientMac.downcase!.gsub!("-", ":")]
-      @dimToDruid.each { |dimension| toDruid[dimension] = event.get(dimension) if event.get(dimension) }
+
+    if clientMac then
+      clientMac = clientMac.gsub("-", ":").downcase
+      toDruid[CLIENT_MAC] =  clientMac
+      @dim_to_druid.each { |dimension| toDruid[dimension] = event.get(dimension) if event.get(dimension) }
       toDruid.merge!(enrichment) if enrichment
       
       toDruid[TIMESTAMP] = timestamp ? timestamp : Time.now.utc.to_i 
       toDruid[SENSOR_IP] = sensorIP if sensorIP
-      toCache[CLIENT_ID] = clientID if clientID
+      toCache[CLIENT_ID] = clientId if clientId
       toCache[WIRELESS_OPERATOR] = operatorName if operatorName
       toCache[WIRELESS_ID] = wirelessId  if wirelessId
 
@@ -109,43 +83,44 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
       if clientConnection then
         toDruid[CLIENT_ACCOUNTING_TYPE] = clientConnection.downcase
         if clientConnection.eql? "Stop" then
-          # funcion de lo
-          # @logger.debug("PUT  client: {} - namesapce: {} - contents: " + toCache, clientMac, namespace_id);
+          @logger.debug? and @logger.debug("PUT  client: #{clientMac} - namespace: #{namespace_id} - contents: " + toCache.to_s);
   
         else
           @store[clientMac + namespace_id] = toCache
           @memcached.set(RADIUS_STORE, @store)
-          # funcion de log
-          #
+          @logger.debug? and @logger.debug("PUT  client: #{clientMac} - namespace: #{namespace_id} - contents: " + toCache.to_s);
         end 
       else
         @store[clientMac + namespace_id] = toCache
         @memcached.set(RADIUS_STORE, @store)
-        # funcion de log
-
+        @logger.debug? and @logger.debug("PUT  client: #{clientMac} - namespace: #{namespace_id} - contents: " + toCache.to_s);
       end
       
       toDruid[TYPE] = "radius"
       toDruid[CLIENT_PROFILE] = "hard"
       toDruid.merge!(toCache)
 
-      enrichmentEvent = Logstash::Event.new
-      toDruid.each {|k,v| enrichmentEvent.set(k,v)}
-        
-      namespace = event.get(NAMESPACE_UUID)
+      store_enrichment = @store_manager.enrich(toDruid) 
+
+      namespace = store_enrichment[NAMESPACE_UUID]
       datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
 
       counterStore = @memcached.get(COUNTER_STORE)
       counterStore = Hash.new if counterStore.nil?
       counterStore[datasource] = counterStore[datasource].nil? ? 0 : (counterStore[datasource] + 1)
+      puts ("escribiendo en COUNTER_STORE #{COUNTER_STORE} y esta escribiendo en #{datasource} el valor #{counterStore[datasource]}")
       @memcached.set(COUNTER_STORE,counterStore)
+
 
       flowsNumber = @memcached.get(FLOWS_NUMBER)
       flowsNumber = Hash.new if flowsNumber.nil?
-      enrichmentEvent["flows_count"] = flowsNumber[datasource] if flowsNumber[datasource]  
+      store_enrichment["flows_count"] = flowsNumber[datasource] if flowsNumber[datasource]  
+      
+      enrichmentEvent = LogStash::Event.new
+      store_enrichment.each {|k,v| enrichmentEvent.set(k,v)}
 
       yield enrichmentEvent
-      event.cancel
     end #clientMac 
+    event.cancel
   end   # def filter
 end     # class Logstash::Filter::Radius
