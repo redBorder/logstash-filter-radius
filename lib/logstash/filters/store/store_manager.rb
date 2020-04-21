@@ -56,7 +56,7 @@ class StoreManager
         keys = get_store_keys(store_name)
         merge_key = keys.join
         contents = store_data[merge_key]
-        must_overwrite?(store_name) ? enrichment.merge!(contents) : enrichment = contents.merge(enrichment) if contents
+        must_overwrite?(store_name) ? enrichment = enrichment.merge!(contents) : enrichment = contents.merge(enrichment) if contents
       end
 
       return enrichment
