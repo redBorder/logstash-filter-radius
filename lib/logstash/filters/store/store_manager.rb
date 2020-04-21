@@ -9,8 +9,7 @@ class StoreManager
 
   def initialize(memcached)
     @memcached = memcached
-  end
- 
+  end 
   def get_store_keys(store_name)
     return ["wireless_station"] if store_name == WLC_PSQL_STORE
     return ["sensor_uuid"] if store_name == SENSOR_PSQL_STORE
@@ -39,9 +38,9 @@ class StoreManager
         store_data = get_store(store_name)
         keys = get_store_keys(store_name)
         namespace = message[NAMESPACE_UUID]
-        mergekey = ""
-        keys.each { |kv| mergekey << enrichment[kv] if enrichment[kv] }
-        contents = store_data[mergekey] ? store_data[mergekey] : (store_data[enrichment[keys.first]] if enrichment[keys.first])
+
+        key = enrichment[keys.first] ? keys.first : keys.join
+        contents = store_data[enrichment[key]] if enrichment[key]
         if contents
            psql_namespace = contents[NAMESPACE_UUID]
            if namespace && psql_namespace
@@ -55,14 +54,14 @@ class StoreManager
       else
         store_data = get_store(store_name)
         keys = get_store_keys(store_name)
-        mergekey = ""
-        keys.each { |kv| mergekey << enrichment[kv] if enrichment[kv] }
-        contents = store_data[mergekey]
-        if contents
-          must_overwrite?(store_name) ? enrichment.merge!(contents) : enrichment = contents.merge(enrichment)
-        end
+        merge_key = keys.join
+        contents = store_data[merge_key]
+        must_overwrite?(store_name) ? enrichment.merge!(contents) : enrichment = contents.merge(enrichment) if contents
       end
-    end  #end bucle
-    return enrichment
-  end    # end Enrich
-end      # end StoreManager
+
+      return enrichment
+    end
+
+  end
+
+end

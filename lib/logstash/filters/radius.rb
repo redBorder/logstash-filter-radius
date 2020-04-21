@@ -28,25 +28,34 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
     @dim_to_druid = [MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID, DEPLOYMENT, DEPLOYMENT_UUID, 
                    SENSOR_NAME, SENSOR_UUID, NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID, NAMESPACE_UUID]
     @memcached_server = MemcachedConfig::servers.first if @memcached_server.empty?
-    @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0})
+    @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0, :value_max_bytes => 4000000})
     @store = @memcached.get(RADIUS_STORE) || {}
     @store_manager = StoreManager.new(@memcached)   
   end
 
   public
+
+   def refresh_stores
+     return nil unless @last_refresh_stores.nil? || ((Time.now - @last_refresh_stores) > (60 * 5))
+     @last_refresh_stores = Time.now
+     e = LogStash::Event.new
+     e.set("refresh_stores",true)
+     return e
+  end
+
   def filter(event)
-    toDruid = {}
-    toCache = {}
+    to_druid = {}
+    to_cache = {}
 
     pattern = /^([a-fA-F0-9][a-fA-F0-9][:\-][a-fA-F0-9][a-fA-F0-9][:\-][a-fA-F0-9][a-fA-F0-9][:\-][a-fA-F0-9][a-fA-F0-9][:\-][a-fA-F0-9][a-fA-F0-9][:\-][a-fA-F0-9][a-fA-F0-9])[:\-]((.*))?/ 
 
-    sensorIP = event.get(PACKET_SRC_IP_ADDRESS)
-    clientId = event.get(USER_NAME_RADIUS)
-    operatorName = event.get(OPERATOR_NAME)
+    sensor_ip = event.get(PACKET_SRC_IP_ADDRESS)
+    client_id = event.get(USER_NAME_RADIUS)
+    operator_name = event.get(OPERATOR_NAME)
     wirelessId = event.get(AIRESPACE_WLAN_ID) 
-    clientMac = event.get(CALLING_STATION_ID)
-    clientConnection = event.get(ACCT_STATUS_TYPE)
-    wirelessStationSSID = event.get(CALLED_STATION_ID)
+    client_mac = event.get(CALLING_STATION_ID)
+    client_connection = event.get(ACCT_STATUS_TYPE)
+    wireless_station_ssid = event.get(CALLED_STATION_ID)
 
     enrichment = event.get("enrichment")
 
@@ -54,72 +63,76 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
 
     timestamp = event.get(TIMESTAMP)
 
-    if clientMac then
-      clientMac = clientMac.gsub("-", ":").downcase
-      toDruid[CLIENT_MAC] =  clientMac
-      @dim_to_druid.each { |dimension| toDruid[dimension] = event.get(dimension) if event.get(dimension) }
-      toDruid.merge!(enrichment) if enrichment
+    if client_mac then
+      client_mac = client_mac.gsub("-", ":").downcase
+      to_druid[CLIENT_MAC] =  client_mac
+      @dim_to_druid.each { |dimension| to_druid[dimension] = event.get(dimension) if event.get(dimension) }
+      to_druid.merge!(enrichment) if enrichment
       
-      toDruid[TIMESTAMP] = timestamp ? timestamp : Time.now.utc.to_i 
-      toDruid[SENSOR_IP] = sensorIP if sensorIP
-      toCache[CLIENT_ID] = clientId if clientId
-      toCache[WIRELESS_OPERATOR] = operatorName if operatorName
-      toCache[WIRELESS_ID] = wirelessId  if wirelessId
+      to_druid[TIMESTAMP] = timestamp ? timestamp : Time.now.utc.to_i 
+      to_druid[SENSOR_IP] = sensor_ip if sensor_ip
+      to_cache[CLIENT_ID] = client_id if client_id
+      to_cache[WIRELESS_OPERATOR] = operator_name if operator_name
+      to_cache[WIRELESS_ID] = wirelessId  if wirelessId
 
-      if wirelessStationSSID then
-        matcher = pattern.match(wirelessStationSSID)
+      if wireless_station_ssid then
+        matcher = pattern.match(wireless_station_ssid)
         if matcher then
           if matcher.length == 4 then
             mac = matcher[1].downcase.gsub("-",":")
-            toCache[WIRELESS_STATION] = mac
-            toCache[WIRELESS_ID] = matcher[2]
+            to_cache[WIRELESS_STATION] = mac
+            to_cache[WIRELESS_ID] = matcher[2]
           elsif matcher.length == 3 then
             mac = matcher[1].downcase.gsub("-",":")
-            toCache[WIRELESS_STATION] = mac
+            to_cache[WIRELESS_STATION] = mac
           end
         end
       end
 
-      if clientConnection then
-        toDruid[CLIENT_ACCOUNTING_TYPE] = clientConnection.downcase
-        if clientConnection.eql? "Stop" then
-          @logger.debug? and @logger.debug("PUT  client: #{clientMac} - namespace: #{namespace_id} - contents: " + toCache.to_s);
+      if client_connection then
+        to_druid[CLIENT_ACCOUNTING_TYPE] = client_connection.downcase
+        if client_connection.eql? "Stop" then
+          @logger.debug? and @logger.debug("PUT  client: #{client_mac} - namespace: #{namespace_id} - contents: " + to_cache.to_s);
   
         else
-          @store[clientMac + namespace_id] = toCache
+          @store[client_mac + namespace_id] = to_cache
           @memcached.set(RADIUS_STORE, @store)
-          @logger.debug? and @logger.debug("PUT  client: #{clientMac} - namespace: #{namespace_id} - contents: " + toCache.to_s);
+          @logger.debug? and @logger.debug("PUT  client: #{client_mac} - namespace: #{namespace_id} - contents: " + to_cache.to_s);
         end 
       else
-        @store[clientMac + namespace_id] = toCache
+        @store[client_mac + namespace_id] = to_cache
         @memcached.set(RADIUS_STORE, @store)
-        @logger.debug? and @logger.debug("PUT  client: #{clientMac} - namespace: #{namespace_id} - contents: " + toCache.to_s);
+        @logger.debug? and @logger.debug("PUT  client: #{client_mac} - namespace: #{namespace_id} - contents: " + to_cache.to_s);
       end
       
-      toDruid[TYPE] = "radius"
-      toDruid[CLIENT_PROFILE] = "hard"
-      toDruid.merge!(toCache)
+      to_druid[TYPE] = "radius"
+      to_druid[CLIENT_PROFILE] = "hard"
+      to_druid.merge!(to_cache)
 
-      store_enrichment = @store_manager.enrich(toDruid) 
+      store_enrichment = @store_manager.enrich(to_druid) 
 
       namespace = store_enrichment[NAMESPACE_UUID]
       datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
 
-      counterStore = @memcached.get(COUNTER_STORE)
-      counterStore = Hash.new if counterStore.nil?
-      counterStore[datasource] = counterStore[datasource].nil? ? 0 : (counterStore[datasource] + 1)
-      @memcached.set(COUNTER_STORE,counterStore)
+      counter_store = @memcached.get(COUNTER_STORE)
+      counter_store = Hash.new if counter_store.nil?
+      counter_store[datasource] = counter_store[datasource].nil? ? 0 : (counter_store[datasource] + 1)
+      @memcached.set(COUNTER_STORE,counter_store)
 
 
-      flowsNumber = @memcached.get(FLOWS_NUMBER)
-      flowsNumber = Hash.new if flowsNumber.nil?
-      store_enrichment["flows_count"] = flowsNumber[datasource] if flowsNumber[datasource]  
+      flows_number = @memcached.get(FLOWS_NUMBER)
+      flows_number = Hash.new if flows_number.nil?
+      store_enrichment["flows_count"] = flows_number[datasource] if flows_number[datasource]  
       
-      enrichmentEvent = LogStash::Event.new
-      store_enrichment.each {|k,v| enrichmentEvent.set(k,v)}
+      enrichment_event = LogStash::Event.new
+      store_enrichment.each {|k,v| enrichment_event.set(k,v)}
 
-      yield enrichmentEvent
-    end #clientMac 
+      yield enrichment_event
+    end #client_mac 
+    event.cancel
+
+    event_refresh = refresh_stores
+    yield event_refresh if event_refresh 
     event.cancel
   end   # def filter
 end     # class Logstash::Filter::Radius
