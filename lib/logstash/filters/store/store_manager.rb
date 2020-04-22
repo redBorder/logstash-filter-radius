@@ -32,15 +32,18 @@ class StoreManager
     stores_list = [WLC_PSQL_STORE, SENSOR_PSQL_STORE, 
                    NMSP_STORE_MEASURE,NMSP_STORE_INFO,
                    RADIUS_STORE,LOCATION_STORE,DWELL_STORE]
-
-    stores_list.each do |store_name|
+    stores_list.each_with_index do |store_name,index|
       if store_name == SENSOR_PSQL_STORE || store_name == WLC_PSQL_STORE
         store_data = get_store(store_name)
         keys = get_store_keys(store_name)
         namespace = message[NAMESPACE_UUID]
-
-        key = enrichment[keys.first] ? keys.first : keys.join
-        contents = store_data[enrichment[key]] if enrichment[key]
+        merge_key =""
+        keys.each{ |k| merge_key += enrichment[k] if enrichment[k] }
+        contents = store_data[merge_key]
+        if contents.nil?
+          key = enrichment[keys.first] ? keys.first : nil
+          contents = store_data[key.to_s] if key
+        end
         if contents
            psql_namespace = contents[NAMESPACE_UUID]
            if namespace && psql_namespace
@@ -52,16 +55,15 @@ class StoreManager
            end
         end      
       else
+        lan_ip_log = enrichment["lan_ip"] || ""
         store_data = get_store(store_name)
         keys = get_store_keys(store_name)
-        merge_key = keys.join
+        merge_key = "" 
+        keys.each{ |k| merge_key += enrichment[k] if enrichment[k] }
         contents = store_data[merge_key]
-        must_overwrite?(store_name) ? enrichment = enrichment.merge!(contents) : enrichment = contents.merge(enrichment) if contents
+        must_overwrite?(store_name) ? enrichment.merge!(contents) : enrichment = contents.merge(enrichment) if contents
       end
-
-      return enrichment
     end
-
+      return enrichment
   end
-
 end

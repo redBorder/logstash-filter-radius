@@ -91,14 +91,10 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
 
       if client_connection then
         to_druid[CLIENT_ACCOUNTING_TYPE] = client_connection.downcase
-        if client_connection.eql? "Stop" then
-          @logger.debug? and @logger.debug("PUT  client: #{client_mac} - namespace: #{namespace_id} - contents: " + to_cache.to_s);
-  
-        else
-          @store[client_mac + namespace_id] = to_cache
-          @memcached.set(RADIUS_STORE, @store)
-          @logger.debug? and @logger.debug("PUT  client: #{client_mac} - namespace: #{namespace_id} - contents: " + to_cache.to_s);
-        end 
+        to_cache[CLIENT_ACCOUNTING_TYPE] = client_connection.downcase
+        @store[client_mac + namespace_id] = to_cache
+        @memcached.set(RADIUS_STORE, @store)
+        @logger.debug? and @logger.debug("PUT  client: #{client_mac} - namespace: #{namespace_id} - contents: " + to_cache.to_s)
       else
         @store[client_mac + namespace_id] = to_cache
         @memcached.set(RADIUS_STORE, @store)
