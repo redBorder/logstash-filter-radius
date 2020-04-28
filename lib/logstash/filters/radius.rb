@@ -35,14 +35,6 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
 
   public
 
-   def refresh_stores
-     return nil unless @last_refresh_stores.nil? || ((Time.now - @last_refresh_stores) > (60 * 5))
-     @last_refresh_stores = Time.now
-     e = LogStash::Event.new
-     e.set("refresh_stores",true)
-     return e
-  end
-
   def filter(event)
     to_druid = {}
     to_cache = {}
@@ -126,10 +118,6 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
 
       yield enrichment_event
     end #client_mac 
-    event.cancel
-
-    event_refresh = refresh_stores
-    yield event_refresh if event_refresh 
     event.cancel
   end   # def filter
 end     # class Logstash::Filter::Radius
