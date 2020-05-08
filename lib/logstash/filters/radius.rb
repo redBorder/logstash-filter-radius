@@ -52,7 +52,7 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
 
     enrichment = event.get("enrichment")
 
-    namespace_id = event.get(NAMESPACE_UUID) ? event.get(NAMESPACE_UUID) : ""
+    namespace_id = (enrichment and enrichment[NAMESPACE_UUID]) ? enrichment[NAMESPACE_UUID] : ""
 
     timestamp = event.get(TIMESTAMP)
 
@@ -101,9 +101,7 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
       store_enrichment = @store_manager.enrich(to_druid) 
  
       if @counter_store_counter or @flow_counter
-        datasource = DATASOURCE
-        namespace = store_enrichment[NAMESPACE_UUID]
-        datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE if (namespace && !namespace.empty?)
+        datasource = store_enrichment[NAMESPACE_UUID] ? DATASOURCE + "_" + store_enrichment[NAMESPACE_UUID] :       DATASOURCE
 
         if @counter_store_counter
           counter_store = @memcached.get(COUNTER_STORE) || {}
@@ -117,11 +115,8 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
           store_enrichment["flows_count"] = (flows_number[datasource] || 0)
         end
       end
-      
-      enrichment_event = LogStash::Event.new
-      store_enrichment.each {|k,v| enrichment_event.set(k,v)}
 
-      yield enrichment_event
+      yield LogStash::Event.new(store_enrichment)
     end #client_mac 
     event.cancel
   end   # def filter
