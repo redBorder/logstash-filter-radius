@@ -35,8 +35,9 @@ class LogStash::Filters::Radius < LogStash::Filters::Base
   end
 
   public
-
+ 
   def filter(event)
+    @store = @memcached.get(RADIUS_STORE) || {}
     to_druid = {}
     to_cache = {}
 
